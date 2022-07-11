@@ -166,11 +166,21 @@ def save_data_files(arbor, filename, fields, trees,
         save_size = len(trees)
 
     if update:
+        # Transplant field data onto tree roots.
         save_roots = transplant_analysis_fields(arbor, save_trees)
+        # If we have new analysis fields, they must be written for
+        # the entire arbor.
+        save_all = any([arbor.field_info[field]["type"] == "analysis"
+                        for field in fields])
     else:
         save_roots = {}
+        save_all = True
 
-    root_field_data = dict((field, []) for field in fields)
+    # This is the set of files we need to save.
+    if not save_all:
+        save_files = set([tree._ai for tree in save_roots.values()])
+
+    root_field_data = {field: [] for field in fields}
 
     group_nnodes = []
     group_ntrees = []
@@ -182,16 +192,24 @@ def save_data_files(arbor, filename, fields, trees,
         group_nnodes.append(cg_nnodes)
         group_ntrees.append(cg_ntrees)
 
-        total_guess = int(np.round(save_size * cg_number / sum(group_ntrees)))
-        save_data_file(
-            arbor, filename, fields,
-            np.array(current_group), root_field_data,
-            cg_number, total_guess)
+        total_guess = int(np.round(save_size * (cg_number+1) / sum(group_ntrees)))
+
+        # If we don't need to save the data file, just gather root fields.
+        if not save_all and cg_number not in save_files:
+            for field in fields:
+                root_field_data[field].append(
+                    uconcatenate([[node[field] for node in current_group]]))
+
+        else:
+            save_data_file(
+                arbor, filename, fields,
+                np.array(current_group), root_field_data,
+                cg_number, total_guess)
 
     if update:
         file_sizes = np.diff(arbor._node_io._ei, prepend=0)
 
-    i = 1
+    i = 0
     for tree in trees:
         if update:
             tree = save_roots.get(tree._arbor_index, tree)
@@ -201,7 +219,7 @@ def save_data_files(arbor, filename, fields, trees,
         cg_ntrees += 1
 
         # if updating, use file sizes of loaded arbor
-        if (update and len(current_group) == file_sizes[i-1]) or \
+        if (update and len(current_group) == file_sizes[i]) or \
           cg_nnodes > max_file_size:
             my_save(i, cg_nnodes, cg_ntrees)
             current_group = []
@@ -228,7 +246,7 @@ def save_data_file(arbor, filename, fields, tree_group,
 
     arbor._node_io_loop(
         arbor._node_io.get_fields,
-        pbar=f"Getting fields [{current_iteration} / ~{total_guess}]",
+        pbar=f"Getting fields [{current_iteration+1} / ~{total_guess}]",
         root_nodes=tree_group, fields=fields, root_only=False)
 
     main_fdata  = {}
@@ -272,12 +290,12 @@ def save_data_file(arbor, filename, fields, tree_group,
                    "tree_end_index",
                    "tree_size"]:
             main_ftypes[ft] = "index"
-        my_filename = f"{filename}_{current_iteration-1:04d}.h5"
+        my_filename = f"{filename}_{current_iteration:04d}.h5"
         save_as_dataset({}, my_filename, main_fdata,
                         field_types=main_ftypes)
 
     if analysis_fdata:
-        my_filename = f"{filename}_{current_iteration-1:04d}-analysis.h5"
+        my_filename = f"{filename}_{current_iteration:04d}-analysis.h5"
         save_as_dataset({}, my_filename, analysis_fdata,
                         field_types=analysis_ftypes)
 
