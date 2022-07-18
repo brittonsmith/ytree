@@ -176,7 +176,7 @@ def parallel_trees(trees, save_every=None, filename=None,
                 trees = [regenerate_node(arbor, tree, new_index=i)
                          for i, tree in enumerate(trees)]
 
-def parallel_tree_nodes(tree, group="forest",
+def parallel_tree_nodes(tree, group="forest", nodes=None,
                         njobs=0, dynamic=False):
     """
     Iterate over nodes in a single tree in parallel.
@@ -203,6 +203,11 @@ def parallel_tree_nodes(tree, group="forest",
         all nodes in the forest, "tree" for all nodes in the tree, or "prog"
         for all nodes in the line of main progenitors.
         Default: "forest"
+    nodes: optional, list
+        A list of nodes to iterate over instead of using a forest, tree, or
+        prog selection. If provided, this will supersede the value of the
+        "group" keyword. Note, all nodes must be members of the tree given
+        in the "tree" argument.
     njobs : optional, int
         The number of process groups for parallel iteration. Set to 0 to make
         the same number of process groups as available processors. Hence,
@@ -238,7 +243,10 @@ def parallel_tree_nodes(tree, group="forest",
 
     afields = _get_analysis_fields(tree.arbor)
 
-    my_halos = list(tree[group])
+    if nodes is None:
+        my_halos = list(tree[group])
+    else:
+        my_halos = nodes
 
     tree_storage = {}
     for halo_store, ihalo in parallel_objects(

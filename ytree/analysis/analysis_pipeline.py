@@ -68,6 +68,7 @@ class AnalysisPipeline:
             output_dir = "."
         self.output_dir = ensure_dir(output_dir)
         self._preprocessed = False
+        self._handoff_store = {}
 
     def add_operation(self, function, *args, always_do=False, **kwargs):
         """
@@ -141,10 +142,16 @@ class AnalysisPipeline:
 
     @parallel_root_only
     def _preprocess(self):
-        "Create output directories and do any other preliminary steps."
+        """
+        Create output directories and do any other preliminary steps.
+
+        Run any preprocess functions associated with operation functions.
+        """
 
         if self._preprocessed:
             return
+
+        pre_run = []
 
         for action in self.actions:
             my_output_dir = action.kwargs.get("output_dir")
@@ -153,9 +160,14 @@ class AnalysisPipeline:
                     os.path.join(self.output_dir, my_output_dir))
                 action.kwargs["output_dir"] = new_output_dir
 
+            pre_func = getattr(action.function, "preprocess", None)
+            if pre_func is not None and pre_func not in pre_run:
+                pre_func()
+                pre_run.append(pre_func)
+
         self._preprocessed = True
 
-    def process_target(self, target):
+    def process_target(self, target, handoff_attrs=None):
         """
         Process a node through the AnalysisPipeline.
 
@@ -166,13 +178,37 @@ class AnalysisPipeline:
         ----------
         target : :class:`~ytree.data_structures.tree_node.TreeNode`
             The node on which to run the analysis pipeline.
+        handoff_attrs : optional, list of strings
+            A list of attributes to be handed down from one target to
+            the next. If given, these attributes will be taken from the
+            target object after the pipeline is run and stored internally.
+            They will then be attached to the next target run through the
+            pipeline. This can be used to pass down attributes from
+            one target to the next, for example, to accumulate results
+            or hang onto objects that are expensive to create.
+            Default: None.
         """
+
         self._preprocess()
+        if handoff_attrs is None:
+            handoff_attrs = []
+
+        for attr in handoff_attrs:
+            if attr in self._handoff_store:
+                val = self._handoff_store.pop(attr)
+                setattr(target, attr, val)
+
         target_filter = True
         for action in self.actions:
             if target_filter or action.always_do:
                 rval = action(target)
                 if rval is not None:
                     target_filter &= bool(rval)
+
+        for attr in handoff_attrs:
+            if hasattr(target, attr):
+                val = getattr(target, attr)
+                self._handoff_store[attr] = val
+                delattr(target, attr)
 
         return target_filter
