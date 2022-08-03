@@ -111,12 +111,14 @@ class YTreeArbor(Arbor):
         # analysis fields in sidecar files
         analysis_filename = f"{self._prefix}-analysis{self._suffix}"
         if os.path.exists(analysis_filename):
+            self.analysis_field_list = []
             self.analysis_filename = analysis_filename
             fh = h5py.File(analysis_filename, mode="r")
             analysis_fi = json.loads(parse_h5_attr(fh, "field_info"))
             fh.close()
             for field in analysis_fi:
                 analysis_fi[field]["type"] = "analysis_saved"
+                self.analysis_field_list.append(field)
             self.field_info.update(analysis_fi)
         else:
             self.analysis_filename = None
@@ -307,7 +309,7 @@ class YTreeArbor(Arbor):
         cr = data_source.cut_region(conditionals)
         return cr
 
-    def get_nodes_from_selection(self, container):
+    def get_nodes_from_selection(self, container, trees=None):
         """
         Generate TreeNodes from a yt data container.
 
@@ -346,6 +348,9 @@ class YTreeArbor(Arbor):
 
         """
 
+        if trees is not None and len(trees) != self.size:
+            raise ValueError("The trees argument must be a list of all trees.")
+
         self._plant_trees()
         container.get_data([('halos', 'file_number'),
                             ('halos', 'file_root_index'),
@@ -357,7 +362,11 @@ class YTreeArbor(Arbor):
         arbor_index = self._node_io._si[file_number] + file_root_index
 
         for ai, ti in zip(arbor_index, tree_index):
-            root_node = self._generate_root_node(ai)
+            if trees is None:
+                root_node = self._generate_root_node(ai)
+            else:
+                root_node = trees[ai]
+
             if ti == 0:
                 yield root_node
             else:
