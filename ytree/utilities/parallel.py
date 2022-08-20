@@ -167,6 +167,7 @@ def parallel_trees(trees, save_every=None, save_in_place=False,
                 tree_store.result_id = None
 
         # combine results for all trees
+        comm = _get_comm(())
         if is_root():
             for itree in range(start, end):
                 my_tree = trees[itree]
@@ -211,6 +212,8 @@ def parallel_trees(trees, save_every=None, save_in_place=False,
 
                 trees = [regenerate_node(arbor, tree, new_index=i)
                          for i, tree in enumerate(trees)]
+
+        comm.barrier()
 
 def parallel_tree_nodes(tree, group="forest", nodes=None,
                         njobs=0, dynamic=False):
